@@ -53,7 +53,7 @@ public:
         std::string buffer;
 
         while (std::getline(inStream, buffer)) {
-            if (!EVP_DigestUpdate(mdCtx.get(), buffer.data(), inStream.gcount())) {
+            if (!EVP_DigestUpdate(mdCtx.get(), buffer.data(), buffer.size())) {
                 throw std::runtime_error("Failed to update digest");
             }
         }
