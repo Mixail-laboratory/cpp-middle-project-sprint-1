@@ -75,7 +75,7 @@ public:
 
     void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
         if (!inStream.good() || !outStream.good()) {
-            throw std::runtime_error("");
+            throw std::runtime_error("not good stream");
         }
         std::string inputLine;
         auto params = CreateChiperParamsFromPassword(password);
@@ -85,7 +85,7 @@ public:
 
         if (!EVP_CipherInit_ex(pCtx.get(), params.cipher, nullptr, params.key.data(), params.iv.data(),
                                params.encrypt)) {
-            throw std::invalid_argument("");
+            throw std::invalid_argument("chiper init failure");
         }
 
         std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
@@ -101,8 +101,6 @@ public:
             }
 
             outStream.write(reinterpret_cast<char *>(outBuf.data()), outLen);
-
-            outStream.write("\n", 1);
         }
         outBuf.resize(EVP_MAX_BLOCK_LENGTH);
         if (!EVP_CipherFinal_ex(pCtx.get(), outBuf.data(), &outLen)) {
@@ -116,7 +114,7 @@ public:
 
     void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
         if (!inStream.good() || !outStream.good()) {
-            throw std::runtime_error("");
+            throw std::runtime_error("not good decrypt");
         }
         std::string inputLine;
         auto params = CreateChiperParamsFromPassword(password);
@@ -126,7 +124,7 @@ public:
 
         if (!EVP_CipherInit_ex(pCtx.get(), params.cipher, nullptr, params.key.data(), params.iv.data(),
                                params.encrypt)) {
-            throw std::invalid_argument("");
+            throw std::invalid_argument("Decrypt init failed");
         }
 
         std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
@@ -142,8 +140,6 @@ public:
             }
 
             outStream.write(reinterpret_cast<char *>(outBuf.data()), outLen);
-
-            outStream.write("\n", 1);
         }
         outBuf.resize(EVP_MAX_BLOCK_LENGTH);
         if (!EVP_CipherFinal_ex(pCtx.get(), outBuf.data(), &outLen)) {
