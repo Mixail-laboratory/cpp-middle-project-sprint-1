@@ -1,6 +1,7 @@
 
 #include "crypto_guard_ctx.h"
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,15 +15,15 @@
 namespace CryptoGuard {
 
 class CryptoGuardCtx::Impl {
+    static constexpr size_t blockSize_ = 4096;
 
     struct AesCipherParams {
         static constexpr size_t KEY_SIZE = 32;         // AES-256 key size
         static constexpr size_t IV_SIZE = 16;          // AES block size (IV length)
         const EVP_CIPHER *cipher = EVP_aes_256_cbc();  // Cipher algorithm
-
-        int encrypt;                              // 1 for encryption, 0 for decryption
-        std::array<unsigned char, KEY_SIZE> key;  // Encryption key
-        std::array<unsigned char, IV_SIZE> iv;    // Initialization vector
+        int encrypt;                                   // 1 for encryption, 0 for decryption
+        std::array<unsigned char, KEY_SIZE> key;       // Encryption key
+        std::array<unsigned char, IV_SIZE> iv;         // Initialization vector
     };
 
     AesCipherParams CreateChiperParamsFromPassword(std::string_view password) {
@@ -49,11 +50,12 @@ public:
         if (!EVP_DigestInit_ex(mdCtx.get(), EVP_sha256(), nullptr)) {
             throw std::runtime_error("Failed to initialize SHA256");
         }
+        inStream.seekg(0);
+        std::vector<char> buffer(blockSize_);
 
-        std::string buffer;
-
-        while (std::getline(inStream, buffer)) {
-            if (!EVP_DigestUpdate(mdCtx.get(), buffer.data(), buffer.size())) {
+        while (inStream.read(buffer.data(), blockSize_) || inStream.gcount() > 0) {
+            const auto bytesRead = inStream.gcount();
+            if (!EVP_DigestUpdate(mdCtx.get(), buffer.data(), bytesRead)) {
                 throw std::runtime_error("Failed to update digest");
             }
         }
@@ -77,7 +79,6 @@ public:
         if (!inStream.good() || !outStream.good()) {
             throw std::runtime_error("not good stream");
         }
-        std::string inputLine;
         auto params = CreateChiperParamsFromPassword(password);
         params.encrypt = 1;
         std::unique_ptr<EVP_CIPHER_CTX, decltype([](EVP_CIPHER_CTX *ctx) { EVP_CIPHER_CTX_free(ctx); })> pCtx(
@@ -88,15 +89,15 @@ public:
             throw std::invalid_argument("chiper init failure");
         }
 
-        std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
-        std::vector<unsigned char> inBuf(16);
+        inStream.seekg(0);
+        std::vector<unsigned char> outBuf(blockSize_ + EVP_MAX_BLOCK_LENGTH);
+        std::vector<char> inBuf(blockSize_);
         int outLen = 0;
-        while (std::getline(inStream, inputLine)) {
-            outBuf.resize(inputLine.size() + EVP_MAX_BLOCK_LENGTH);
+        while (inStream.read(inBuf.data(), blockSize_) || inStream.gcount() > 0) {
+            outBuf.resize(inStream.gcount() + EVP_MAX_BLOCK_LENGTH);
             std::string output;
-            if (!EVP_CipherUpdate(pCtx.get(), outBuf.data(), &outLen,
-                                  reinterpret_cast<unsigned char *>(inputLine.data()),
-                                  static_cast<int>(inputLine.size()))) {
+            if (!EVP_CipherUpdate(pCtx.get(), outBuf.data(), &outLen, reinterpret_cast<unsigned char *>(inBuf.data()),
+                                  static_cast<int>(inStream.gcount()))) {
                 throw std::runtime_error("Encryption failed");
             }
 
@@ -116,7 +117,6 @@ public:
         if (!inStream.good() || !outStream.good()) {
             throw std::runtime_error("not good decrypt");
         }
-        std::string inputLine;
         auto params = CreateChiperParamsFromPassword(password);
         params.encrypt = 0;
         std::unique_ptr<EVP_CIPHER_CTX, decltype([](EVP_CIPHER_CTX *ctx) { EVP_CIPHER_CTX_free(ctx); })> pCtx(
@@ -126,17 +126,16 @@ public:
                                params.encrypt)) {
             throw std::invalid_argument("Decrypt init failed");
         }
-
-        std::vector<unsigned char> outBuf(16 + EVP_MAX_BLOCK_LENGTH);
-        std::vector<unsigned char> inBuf(16);
+        inStream.seekg(0);
+        std::vector<unsigned char> outBuf(blockSize_ + EVP_MAX_BLOCK_LENGTH);
+        std::vector<char> inBuf(blockSize_);
         int outLen = 0;
-        while (std::getline(inStream, inputLine)) {
-            outBuf.resize(inputLine.size() + EVP_MAX_BLOCK_LENGTH);
+        while (inStream.read(inBuf.data(), blockSize_) || inStream.gcount() > 0) {
+            outBuf.resize(inStream.gcount() + EVP_MAX_BLOCK_LENGTH);
             std::string output;
-            if (!EVP_CipherUpdate(pCtx.get(), outBuf.data(), &outLen,
-                                  reinterpret_cast<unsigned char *>(inputLine.data()),
-                                  static_cast<int>(inputLine.size()))) {
-                throw std::runtime_error("Encryption failed");
+            if (!EVP_CipherUpdate(pCtx.get(), outBuf.data(), &outLen, reinterpret_cast<unsigned char *>(inBuf.data()),
+                                  static_cast<int>(inStream.gcount()))) {
+                throw std::runtime_error("Decryption failed");
             }
 
             outStream.write(reinterpret_cast<char *>(outBuf.data()), outLen);

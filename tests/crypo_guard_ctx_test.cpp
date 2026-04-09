@@ -173,3 +173,18 @@ TEST_F(CryptoGuardCtxTest, EncryptSpecialCharacters) {
     std::string decrypted = StreamToString(decryptedStream);
     EXPECT_EQ(decrypted, specialData);
 }
+
+TEST_F(CryptoGuardCtxTest, EncryptDecryptLargeText) {
+    std::string largeData(1024 * 1024, 'A');
+
+    std::stringstream inStream = CreateInputStream(largeData);
+    std::stringstream encryptedStream;
+    EXPECT_NO_THROW(crypto.EncryptFile(inStream, encryptedStream, TEST_PASSWORD));
+
+    encryptedStream.seekg(0);
+    std::stringstream decryptedStream;
+    EXPECT_NO_THROW(crypto.DecryptFile(encryptedStream, decryptedStream, TEST_PASSWORD));
+
+    std::string decrypted = StreamToString(decryptedStream);
+    EXPECT_EQ(decrypted, largeData);
+}
